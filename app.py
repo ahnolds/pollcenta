@@ -5,41 +5,47 @@ pp = pprint.PrettyPrinter(indent=4)
 
 import math
 import os
+import psycopg2
 import re
 from slack_bolt import App
 from slack_bolt.adapter.socket_mode import SocketModeHandler
-import sqlite3
 
 MAX_NUM_CHOICES = 30
+
+DATABASE_URL = os.environ['DATABASE_URL']
 
 # Initializes the app
 app = App(token=os.environ.get("SLACK_BOT_TOKEN"))
 
+# Create the database connection (psycopg2 connections are thread-safe)
+con = psycopg2.connect(DATABASE_URL, sslmode='require')
+
 # Create the necessary tables in the sqlite database
-with sqlite3.connect('polls.db') as con:
-    con.execute('''CREATE TABLE IF NOT EXISTS polls (
-        id INTEGER PRIMARY KEY,
-        channel_id TEXT NOT NULL,
-        message_ts TEXT NOT NULL,
-        anonymous INTEGER NOT NULL,
-        allow_multiple INTEGER NOT NULL,
-        UNIQUE(channel_id, message_ts)
-    )''')
-    con.execute('''CREATE TABLE IF NOT EXISTS choices (
-        id INTEGER PRIMARY KEY,
-        poll_id INTEGER NOT NULL,
-        action_id INTEGER NOT NULL,
-        content TEXT NOT NULL,
-        UNIQUE(poll_id, action_id),
-        FOREIGN KEY (poll_id) REFERENCES polls (id)
-    )''')
-    con.execute('''CREATE TABLE IF NOT EXISTS responses (
-        id INTEGER PRIMARY KEY,
-        user_id TEXT NOT NULL,
-        choice_id INTEGER NOT NULL,
-        UNIQUE(user_id, choice_id),
-        FOREIGN KEY (choice_id) REFERENCES choices (id)
-    )''')
+with con:
+    with con.cursor() as cur:
+        cur.execute('''CREATE TABLE IF NOT EXISTS polls (
+            id INTEGER PRIMARY KEY,
+            channel_id TEXT NOT NULL,
+            message_ts TEXT NOT NULL,
+            anonymous INTEGER NOT NULL,
+            allow_multiple INTEGER NOT NULL,
+            UNIQUE(channel_id, message_ts)
+        )''')
+        cur.execute('''CREATE TABLE IF NOT EXISTS choices (
+            id INTEGER PRIMARY KEY,
+            poll_id INTEGER NOT NULL,
+            action_id INTEGER NOT NULL,
+            content TEXT NOT NULL,
+            UNIQUE(poll_id, action_id),
+            FOREIGN KEY (poll_id) REFERENCES polls (id)
+        )''')
+        cur.execute('''CREATE TABLE IF NOT EXISTS responses (
+            id INTEGER PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            choice_id INTEGER NOT NULL,
+            UNIQUE(user_id, choice_id),
+            FOREIGN KEY (choice_id) REFERENCES choices (id)
+        )''')
 
 @app.command("/pollcenta")
 @app.shortcut("pollcenta")
@@ -373,62 +379,63 @@ def handle_make_choice(ack, body, respond):
     user_id = body['user']['id']
 
     # Handle the database interactions
-    with sqlite3.connect('polls.db') as con:
-        # Insert an entry for this poll into the database if it isn't already present
-        con.execute('INSERT OR IGNORE INTO polls(channel_id, message_ts, anonymous, allow_multiple) VALUES (?, ?, ?, ?)',
-                    (channel_id, message_ts, anonymous, allow_multiple))
+    with con:
+        with con.cursor() as cur:
+            # Insert an entry for this poll into the database if it isn't already present
+            cur.execute('INSERT OR IGNORE INTO polls(channel_id, message_ts, anonymous, allow_multiple) VALUES (%s, %s, %s, %s)',
+                        (channel_id, message_ts, anonymous, allow_multiple))
 
-        # Get the poll ID
-        poll_id = con.execute('SELECT id FROM polls WHERE channel_id = ? AND message_ts = ?', (channel_id, message_ts)).fetchone()[0]
+            # Get the poll ID
+            poll_id = cur.execute('SELECT id FROM polls WHERE channel_id = %s AND message_ts = %s', (channel_id, message_ts)).fetchone()[0]
 
-        # Insert entries for all the choices if they aren't already present
-        for action_block in action_blocks:
-            for action in action_block['elements']:
-                if re.match("choice_\d+", action['action_id']):
-                    con.execute('INSERT OR IGNORE INTO choices(poll_id, action_id, content) VALUES (?, ?, ?)',
-                                (poll_id, int(action['action_id'].split('_')[1]), action['text']['text']))
+            # Insert entries for all the choices if they aren't already present
+            for action_block in action_blocks:
+                for action in action_block['elements']:
+                    if re.match("choice_\d+", action['action_id']):
+                        cur.execute('INSERT OR IGNORE INTO choices(poll_id, action_id, content) VALUES (%s, %s, %s)',
+                                    (poll_id, int(action['action_id'].split('_')[1]), action['text']['text']))
 
-        # Check if this user has already chosen the selected response
-        resp = con.execute('''SELECT responses.id
-                              FROM responses
-                              INNER JOIN choices
-                              ON responses.choice_id=choices.id
-                              WHERE responses.user_id = ?
-                              AND choices.poll_id = ?
-                              AND choices.action_id = ?
-                           ''', (user_id, poll_id, action_id)).fetchone()
-        if resp is None:
-            # If multiple responses are not allowed, delete any old ones from this user
-            if not allow_multiple:
-                con.execute('''DELETE FROM responses
-                               WHERE id IN (
-                                   SELECT responses.id
-                                   FROM responses
-                                   INNER JOIN choices
-                                   ON responses.choice_id=choices.id
-                                   WHERE choices.poll_id = ?
-                                   AND responses.user_id = ?
-                               )
-                            ''', (poll_id, user_id))
-            # Insert an entry for this response
-            con.execute('''INSERT INTO responses(user_id, choice_id)
-                           SELECT ?, choices.id
-                           FROM choices
-                           WHERE poll_id = ?
-                           AND action_id = ?
-                        ''', (user_id, poll_id, action_id))
-        else:
-            # Delete the entry for this response
-            con.execute('DELETE FROM responses WHERE id = ?', (resp[0],))
+            # Check if this user has already chosen the selected response
+            resp = cur.execute('''SELECT responses.id
+                                  FROM responses
+                                  INNER JOIN choices
+                                  ON responses.choice_id=choices.id
+                                  WHERE responses.user_id = %s
+                                  AND choices.poll_id = %s
+                                  AND choices.action_id = %s
+                               ''', (user_id, poll_id, action_id)).fetchone()
+            if resp is None:
+                # If multiple responses are not allowed, delete any old ones from this user
+                if not allow_multiple:
+                    cur.execute('''DELETE FROM responses
+                                   WHERE id IN (
+                                       SELECT responses.id
+                                       FROM responses
+                                       INNER JOIN choices
+                                       ON responses.choice_id=choices.id
+                                       WHERE choices.poll_id = %s
+                                       AND responses.user_id = %s
+                                   )
+                                ''', (poll_id, user_id))
+                # Insert an entry for this response
+                cur.execute('''INSERT INTO responses(user_id, choice_id)
+                               SELECT %s, choices.id
+                               FROM choices
+                               WHERE poll_id = %s
+                               AND action_id = %s
+                            ''', (user_id, poll_id, action_id))
+            else:
+                # Delete the entry for this response
+                cur.execute('DELETE FROM responses WHERE id = %s', (resp[0],))
 
-        # Get all the choices and the people who have made them
-        choices = con.execute('''SELECT choices.content, responses.user_id
-                                 FROM choices
-                                 LEFT JOIN responses
-                                 ON choices.id=responses.choice_id
-                                 WHERE choices.poll_id = ?
-                                 ORDER BY choices.action_id
-                              ''', (poll_id,)).fetchall()
+            # Get all the choices and the people who have made them
+            choices = cur.execute('''SELECT choices.content, responses.user_id
+                                     FROM choices
+                                     LEFT JOIN responses
+                                     ON choices.id=responses.choice_id
+                                     WHERE choices.poll_id = %s
+                                     ORDER BY choices.action_id
+                                  ''', (poll_id,)).fetchall()
 
     # Get the choice names
     choice_names = dict.fromkeys(choice[0] for choice in choices)
