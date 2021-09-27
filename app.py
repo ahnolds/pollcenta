@@ -382,7 +382,10 @@ def handle_make_choice(ack, body, respond):
     with con:
         with con.cursor() as cur:
             # Insert an entry for this poll into the database if it isn't already present
-            cur.execute('INSERT OR IGNORE INTO polls(channel_id, message_ts, anonymous, allow_multiple) VALUES (%s, %s, %s, %s)',
+            cur.execute('''INSERT INTO polls(channel_id, message_ts, anonymous, allow_multiple)
+                           VALUES (%s, %s, %s, %s)
+                           ON CONFLICT DO NOTHING
+                        ''',
                         (channel_id, message_ts, anonymous, allow_multiple))
 
             # Get the poll ID
@@ -392,7 +395,10 @@ def handle_make_choice(ack, body, respond):
             for action_block in action_blocks:
                 for action in action_block['elements']:
                     if re.match("choice_\d+", action['action_id']):
-                        cur.execute('INSERT OR IGNORE INTO choices(poll_id, action_id, content) VALUES (%s, %s, %s)',
+                        cur.execute('''INSERT INTO choices(poll_id, action_id, content)
+                                       VALUES (%s, %s, %s)
+                                       ON CONFLICT DO NOTHING
+                                    ''',
                                     (poll_id, int(action['action_id'].split('_')[1]), action['text']['text']))
 
             # Check if this user has already chosen the selected response
