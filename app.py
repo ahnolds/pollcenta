@@ -24,7 +24,7 @@ con = psycopg2.connect(DATABASE_URL, sslmode='require')
 with con:
     with con.cursor() as cur:
         cur.execute('''CREATE TABLE IF NOT EXISTS polls (
-            id INTEGER PRIMARY KEY,
+            id SERIAL PRIMARY KEY,
             channel_id TEXT NOT NULL,
             message_ts TEXT NOT NULL,
             anonymous BOOLEAN NOT NULL,
@@ -32,7 +32,7 @@ with con:
             UNIQUE(channel_id, message_ts)
         )''')
         cur.execute('''CREATE TABLE IF NOT EXISTS choices (
-            id INTEGER PRIMARY KEY,
+            id SERIAL PRIMARY KEY,
             poll_id INTEGER NOT NULL,
             action_id INTEGER NOT NULL,
             content TEXT NOT NULL,
@@ -40,7 +40,7 @@ with con:
             FOREIGN KEY (poll_id) REFERENCES polls (id)
         )''')
         cur.execute('''CREATE TABLE IF NOT EXISTS responses (
-            id INTEGER PRIMARY KEY,
+            id SERIAL PRIMARY KEY,
             user_id TEXT NOT NULL,
             choice_id INTEGER NOT NULL,
             UNIQUE(user_id, choice_id),
@@ -389,7 +389,8 @@ def handle_make_choice(ack, body, respond):
                         (channel_id, message_ts, anonymous, allow_multiple))
 
             # Get the poll ID
-            poll_id = cur.execute('SELECT id FROM polls WHERE channel_id = %s AND message_ts = %s', (channel_id, message_ts)).fetchone()[0]
+            cur.execute('SELECT id FROM polls WHERE channel_id = %s AND message_ts = %s', (channel_id, message_ts))
+            poll_id = cur.fetchone()[0]
 
             # Insert entries for all the choices if they aren't already present
             for action_block in action_blocks:
@@ -402,14 +403,15 @@ def handle_make_choice(ack, body, respond):
                                     (poll_id, int(action['action_id'].split('_')[1]), action['text']['text']))
 
             # Check if this user has already chosen the selected response
-            resp = cur.execute('''SELECT responses.id
-                                  FROM responses
-                                  INNER JOIN choices
-                                  ON responses.choice_id=choices.id
-                                  WHERE responses.user_id = %s
-                                  AND choices.poll_id = %s
-                                  AND choices.action_id = %s
-                               ''', (user_id, poll_id, action_id)).fetchone()
+            cur.execute('''SELECT responses.id
+                           FROM responses
+                           INNER JOIN choices
+                           ON responses.choice_id=choices.id
+                           WHERE responses.user_id = %s
+                           AND choices.poll_id = %s
+                           AND choices.action_id = %s
+                        ''', (user_id, poll_id, action_id))
+            resp = cur.fetchone()
             if resp is None:
                 # If multiple responses are not allowed, delete any old ones from this user
                 if not allow_multiple:
@@ -435,13 +437,14 @@ def handle_make_choice(ack, body, respond):
                 cur.execute('DELETE FROM responses WHERE id = %s', (resp[0],))
 
             # Get all the choices and the people who have made them
-            choices = cur.execute('''SELECT choices.content, responses.user_id
-                                     FROM choices
-                                     LEFT JOIN responses
-                                     ON choices.id=responses.choice_id
-                                     WHERE choices.poll_id = %s
-                                     ORDER BY choices.action_id
-                                  ''', (poll_id,)).fetchall()
+            cur.execute('''SELECT choices.content, responses.user_id
+                           FROM choices
+                           LEFT JOIN responses
+                           ON choices.id=responses.choice_id
+                           WHERE choices.poll_id = %s
+                           ORDER BY choices.action_id
+                        ''', (poll_id,))
+            choices = cur.fetchall()
 
     # Get the choice names
     choice_names = dict.fromkeys(choice[0] for choice in choices)
