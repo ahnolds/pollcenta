@@ -27,8 +27,8 @@ with con:
             id INTEGER PRIMARY KEY,
             channel_id TEXT NOT NULL,
             message_ts TEXT NOT NULL,
-            anonymous INTEGER NOT NULL,
-            allow_multiple INTEGER NOT NULL,
+            anonymous BOOLEAN NOT NULL,
+            allow_multiple BOOLEAN NOT NULL,
             UNIQUE(channel_id, message_ts)
         )''')
         cur.execute('''CREATE TABLE IF NOT EXISTS choices (
