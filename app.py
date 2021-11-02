@@ -223,14 +223,6 @@ def pollcenta_command(ack, body, client):
         view=base_view
     )
 
-def escape_html(string):
-    # If the slack documentation (https://api.slack.com/reference/surfaces/formatting#escaping)
-    # were to be believed, we would want to use the native Python html.escape(string, quote=False)
-    # However, that seems not to work at all, at least on buttons. The best I can do is to just
-    # replace the strings with their text equivalent (and hope that doesn't make the string
-    # longer than the button length limit).
-    return string.replace('&', 'and').replace('>', 'greater than').replace('<', 'less than')
-
 @app.view("poll_creator")
 def handle_poll_creation(ack, body, client, view):
     ack()
@@ -266,7 +258,7 @@ def handle_poll_creation(ack, body, client, view):
         if action_id in values:
             content = values[action_id]['choice']['value']
             if content is not None:
-                choices.append((action_id, escape_html(content)))
+                choices.append((action_id, content))
 
     # If users should be able to add options to the poll, add a button for this
     if 'addoptions' in basic_options:
@@ -284,7 +276,7 @@ def handle_poll_creation(ack, body, client, view):
             "type": "button",
             "text": {
                 "type": "plain_text",
-                "text": "{}".format(html.escape(content, quote=False))
+                "text": "{}".format(content)
             },
             "action_id": action_id
         })
@@ -371,6 +363,10 @@ def handle_make_choice(ack, body, respond):
     # Extract out the header, action buttons, and context
     header_block = blocks[0]
     action_blocks = [block for block in blocks if block['type'] == 'actions']
+    for block in action_blocks:
+        for element in block['elements']:
+            element['text']['text'] = html.unescape(element['text']['text'])
+    pp.pprint(action_blocks)
     context_block = blocks[-1]
 
     # Get the channel and message IDs
@@ -578,7 +574,7 @@ def handle_user_choice_added(ack, body, client, respond, view):
     last_choice_index = int(last_choice_action['action_id'].split('_')[1])
 
     # Replace the former "Add an option" button with the new choice
-    last_action_block['elements'][-1]['text']['text'] = escape_html(new_choice)
+    last_action_block['elements'][-1]['text']['text'] = new_choice
     last_action_block['elements'][-1]['action_id'] = 'choice_{}'.format(last_choice_index + 1)
 
     # If we aren't at the limit, put the "Add an option" button back
