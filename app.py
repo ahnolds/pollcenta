@@ -366,7 +366,6 @@ def handle_make_choice(ack, body, respond):
     for block in action_blocks:
         for element in block['elements']:
             element['text']['text'] = html.unescape(element['text']['text'])
-    pp.pprint(action_blocks)
     context_block = blocks[-1]
 
     # Get the channel and message IDs
