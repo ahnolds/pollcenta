@@ -382,6 +382,11 @@ def handle_make_choice(ack, body, respond):
     # Get the user who responded
     user_id = body['user']['id']
 
+    # If the connection to the database has been closed out from under us, try to reconnect
+    global con
+    if con.closed:
+        con = psycopg2.connect(DATABASE_URL, sslmode='require')
+
     # Handle the database interactions
     with con:
         with con.cursor() as cur:
