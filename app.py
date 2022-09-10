@@ -19,7 +19,8 @@ DATABASE_URL = os.environ['DATABASE_URL']
 app = App(token=os.environ.get("SLACK_BOT_TOKEN"))
 
 # Create the database connection (psycopg2 connections are thread-safe)
-con = psycopg2.connect(DATABASE_URL, sslmode='require')
+#con = psycopg2.connect(DATABASE_URL, sslmode='require')
+con = psycopg2.connect(DATABASE_URL)
 
 # Create the necessary tables in the sqlite database
 with con:
@@ -385,7 +386,8 @@ def handle_make_choice(ack, body, respond):
     # If the connection to the database has been closed out from under us, try to reconnect
     global con
     if con.closed:
-        con = psycopg2.connect(DATABASE_URL, sslmode='require')
+        #con = psycopg2.connect(DATABASE_URL, sslmode='require')
+        con = psycopg2.connect(DATABASE_URL)
 
     # Handle the database interactions
     with con:
