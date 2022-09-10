@@ -389,6 +389,18 @@ def handle_make_choice(ack, body, respond):
         #con = psycopg2.connect(DATABASE_URL, sslmode='require')
         con = psycopg2.connect(DATABASE_URL)
 
+    # Unfortunately, the above check only catches somewhat graceful closures
+    # If e.g. the server is closed out from under us, then the closed parameter
+    # is not updated. The only real guaranteed way to make sure the connection
+    # is still live is to try an operation - SELECT 1 should suffice and be fast
+    try:
+        with con:
+            with con.cursor() as cur:
+                cur.execute('SELECT 1')
+    except psycopg2.OperationalError:
+        #con = psycopg2.connect(DATABASE_URL, sslmode='require')
+        con = psycopg2.connect(DATABASE_URL)
+
     # Handle the database interactions
     with con:
         with con.cursor() as cur:
