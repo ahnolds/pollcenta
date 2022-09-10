@@ -1,3 +1,4 @@
 venv
 polls.db
 .*.swp
+creds.txt
