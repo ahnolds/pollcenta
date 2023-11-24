@@ -8,6 +8,7 @@ import math
 import os
 import psycopg2
 import re
+import sys
 from slack_bolt import App
 from slack_bolt.adapter.socket_mode import SocketModeHandler
 
@@ -53,6 +54,7 @@ with con:
 @app.shortcut("pollcenta")
 def pollcenta_command(ack, body, client):
     ack()
+    print(body, file=sys.stdout)
     if 'channel_id' in body:
         channel_id = body['channel_id']
         conversation_selct_blocks = []
@@ -326,8 +328,15 @@ def handle_add_choices(ack, body, client):
     }
     # Count the number of choices that already were present
     next_choice_num = len([block for block in new_view['blocks'] if block['block_id'].startswith('choice_')]) + 1
+
+    # Find the position to insert
+    insert_pos = -1
+    for (index, item) in enumerate(new_view['blocks']):
+        if item['type'] == 'section':
+            insert_pos = index + 1
+
     # Add a new choice to the end of the choices
-    new_view['blocks'].insert(-1, {
+    new_view['blocks'].insert(insert_pos, {
         "type": "input",
         "block_id": "choice_{}".format(next_choice_num),
         "optional": True,
@@ -346,10 +355,10 @@ def handle_add_choices(ack, body, client):
         # Increment the count of choices available
         print(new_view)
         print(new_view['blocks'][-1])
-        new_view['blocks'][-1]['text']['text'] = "*{} / {} choices used*".format(next_choice_num, MAX_NUM_CHOICES)
+        new_view['blocks'][insert_pos + 1]['text']['text'] = "*{} / {} choices used*".format(next_choice_num, MAX_NUM_CHOICES)
     else:
         # No more choices can be added
-        del new_view['blocks'][-1]
+        del new_view['blocks'][insert_pos + 1]
 
     # Update the view
     client.views_update(
