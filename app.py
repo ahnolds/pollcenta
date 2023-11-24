@@ -344,6 +344,8 @@ def handle_add_choices(ack, body, client):
 
     if next_choice_num < MAX_NUM_CHOICES:
         # Increment the count of choices available
+        print(new_view)
+        print(new_view['blocks'][-1])
         new_view['blocks'][-1]['text']['text'] = "*{} / {} choices used*".format(next_choice_num, MAX_NUM_CHOICES)
     else:
         # No more choices can be added
