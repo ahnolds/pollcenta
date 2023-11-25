@@ -52,11 +52,18 @@ with con:
 
 @app.command("/pollcenta")
 @app.shortcut("pollcenta")
-def pollcenta_command(ack, body, client, *args, **kwargs):
+def pollcenta_command(ack, body, client, logger, payload, *args, **kwargs):
     ack()
+    print("HELLO", file=sys.stdout)
     print(body, file=sys.stdout)
+    print(payload, file=sys.stdout)
     print(args, file=sys.stdout)
     print(kwargs, file=sys.stdout)
+    logger.info("LOGGING")
+    logger.info(body)
+    logger.info(payload)
+    logger.info(args)
+    logger.info(kwargs)
     if 'channel_id' in body:
         channel_id = body['channel_id']
         conversation_selct_blocks = []
@@ -356,8 +363,6 @@ def handle_add_choices(ack, body, client):
     if insert_pos != -1:
         if next_choice_num < MAX_NUM_CHOICES:
             # Increment the count of choices available
-            print(new_view)
-            print(new_view['blocks'][-1])
             new_view['blocks'][insert_pos + 1]['text']['text'] = "*{} / {} choices used*".format(next_choice_num, MAX_NUM_CHOICES)
         else:
             # No more choices can be added
