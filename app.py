@@ -12,6 +12,7 @@ import sys
 from slack_bolt import App
 from slack_bolt.adapter.socket_mode import SocketModeHandler
 
+
 MAX_NUM_CHOICES = 30
 
 DATABASE_URL = os.environ['DATABASE_URL']
